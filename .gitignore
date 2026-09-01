@@ -23,6 +23,7 @@ Desktop.ini
 *.tmp
 *.temp
 *.swp
+*.tsbuildinfo
 *.pem
 
 # debug
