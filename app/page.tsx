@@ -11,6 +11,7 @@ const transports = ['車', '電車＋徒歩', 'バス', '徒歩'];
 const companions = ['ひとり', 'カップル', '家族', '友達', 'シニア'];
 const durations = ['30分', '60分', '90分', '120分以上'];
 const interests = ['レッサーパンダ', '自然', '写真', '散策', 'ゲーム', 'のんびり'];
+const emptyMapPoints: MapPoint[] = [];
 const titleStorageKey = 'nishiyamaQuest.earnedTitles.v1';
 const progressStorageKey = 'nishiyamaQuest.adventureProgress.v1';
 const allTitles = ['西山公園ビギナー','西山公園冒険家','西山公園マスター','レッサーパンダ博士','西山フォトマスター'];
@@ -68,6 +69,7 @@ export default function Home() {
   const [foundPanda,setFoundPanda]=useState('');
   const [foundRedPandas,setFoundRedPandas]=useState<string[]>([]);
   const [toiletOpen,setToiletOpen]=useState(false);
+  const [selectedToiletId,setSelectedToiletId]=useState('');
   const [screenBeforeToilet,setScreenBeforeToilet]=useState<Screen>('top');
   const [routeReady,setRouteReady]=useState(false);
   const [savedRouteIds,setSavedRouteIds]=useState<string[]>([]);
@@ -112,12 +114,18 @@ export default function Home() {
       toilets:convert(openData.publicToilets),parking:convert(openData.parking),busStops:convert(openData.busStops),
     };
   },[route,openData,routeAnchor]);
+  const locationQuestPoints=useMemo<MapPoint[]>(()=>active&&typeof active.lat==='number'&&typeof active.lng==='number'?[{id:active.id,name:active.name,latitude:active.lat,longitude:active.lng}]:[],[active]);
+  const activeDistance=gps&&active&&typeof active.lat==='number'&&typeof active.lng==='number'?Math.round(distance(gps,{lat:active.lat,lng:active.lng})):null;
+  const selectedToilet=openData.publicToilets.find(toilet=>toilet.id===selectedToiletId);
+  const selectedToiletPoints=useMemo<MapPoint[]>(()=>selectedToilet&&selectedToilet.latitude!==null&&selectedToilet.longitude!==null?[{id:selectedToilet.id,name:selectedToilet.name,latitude:selectedToilet.latitude,longitude:selectedToilet.longitude}]:[],[selectedToilet]);
+  const selectedToiletDistance=gps&&selectedToilet&&selectedToilet.latitude!==null&&selectedToilet.longitude!==null?Math.round(distance(gps,{lat:selectedToilet.latitude,lng:selectedToilet.longitude})):null;
 
   const nav=(next:Screen)=>{setScreen(next);window.scrollTo(0,0);};
-  const openToilet=()=>{setScreenBeforeToilet(screen);setToiletOpen(true);window.scrollTo(0,0);};
+  const openToilet=()=>{setScreenBeforeToilet(screen);setSelectedToiletId('');setToiletOpen(true);window.scrollTo(0,0);};
   const closeToilet=()=>{setToiletOpen(false);setScreen(screenBeforeToilet);window.scrollTo(0,0);};
   const toggle=(value:string)=>setChosen(currentValues=>currentValues.includes(value)?currentValues.filter(item=>item!==value):[...currentValues,value]);
   const locate=()=>navigator.geolocation ? navigator.geolocation.getCurrentPosition(position=>{setGps({lat:position.coords.latitude,lng:position.coords.longitude});setMessage('現在地を取得しました');},()=>setMessage('現在地を取得できませんでした。デモモードをご利用ください。')) : setMessage('このブラウザは現在地取得に対応していません。');
+  const selectToilet=(id:string)=>{setSelectedToiletId(id);if(!gps)locate();window.setTimeout(()=>document.getElementById('selected-toilet-map')?.scrollIntoView({behavior:'smooth',block:'start'}),0);};
   const reached=Boolean(demo||(gps&&active?.lat&&active?.lng&&distance(gps,{lat:active.lat,lng:active.lng})<=60));
   const finishQuest=()=>{if(!active||done.includes(active.id))return;const next=[...done,active.id];setDone(next);setPoints(value=>value+100);setMessage('100 POINT GET!');if(next.length===route.length)setTimeout(()=>nav('complete'),650);else setTimeout(()=>{setCurrent(value=>value+1);setFoundPanda('');setMessage('');},650);};
   const markPandaFound=()=>{if(!foundPanda||!reached)return;setFoundRedPandas(currentFound=>currentFound.includes(foundPanda)?currentFound:[...currentFound,foundPanda]);};
@@ -256,10 +264,11 @@ export default function Home() {
 
     {screen==='location'&&<div className="screen">
       <ScenicHeader eyebrow="YOUR LOCATION" title="現在地を確認" lead="クエスト地点から60m以内で到着です。" label="迷わず進もう"/>
-      <div className="location-card"><div className="radar"><i/></div><strong>{demo?'QUEST POINTに到着！':gps?'現在地を取得済み':'現在地を取得してください'}</strong><p>{demo?'GPS到着判定をスキップしています。':active?.lat&&gps?`地点まで約 ${Math.round(distance(gps,{lat:active.lat,lng:active.lng!}))}m`:'現在地を取得すると距離を計算します。'}</p></div>
+      <div className="location-card"><div className="radar"><i/></div><strong>{demo?'QUEST POINTに到着！':reached?'QUEST POINTに到着！':gps?'現在地を取得済み':'現在地を取得してください'}</strong><p>{demo?'GPS到着判定のみスキップしています。':activeDistance!==null?`クエスト地点まで直線距離 約 ${activeDistance}m`:'現在地を取得すると距離を計算します。'}</p></div>
       <button className="secondary" onClick={locate}>現在地を取得</button>
+      {gps&&locationQuestPoints.length>0&&<section className="location-map-panel" aria-label="現在地とクエスト地点"><div className="location-map-heading"><div><small>POSITION MAP</small><strong>{active?.name}</strong></div><span>{activeDistance!==null?`約${activeDistance}m`:'--'}</span></div><QuestMap quests={locationQuestPoints} toilets={emptyMapPoints} parking={emptyMapPoints} busStops={emptyMapPoints} currentLocation={gps} focusCurrentAndPoints compact/><div className="map-key location-map-key"><span><i className="key-current"/>現在地</span><span><i className="key-quest"/>クエスト地点</span></div></section>}
       <label className="demo-toggle"><span><b>デモモード</b><small>審査会用：GPS到着判定のみスキップ</small></span><input type="checkbox" checked={demo} onChange={event=>setDemo(event.target.checked)}/></label>
-      <button className="primary" disabled={!reached} onClick={()=>nav('quest')}>クエストへ戻る <span>›</span></button>{message&&<p className="status">{message}</p>}
+      <div className="location-actions"><button className="primary location-map-button" onClick={()=>nav('map')}><span aria-hidden="true">◈</span>地図で現在地を確認する</button><button className="secondary" onClick={()=>nav('quest')}>クエストへ戻る <span>›</span></button></div>{message&&<p className="status">{message}</p>}
     </div>}
 
     {screen==='complete'&&<div className="screen complete">
@@ -279,7 +288,7 @@ export default function Home() {
       <button className="secondary" onClick={()=>nav('top')}>トップへ戻る</button>
     </div>}
 
-    {toiletOpen&&<section className="toilet-page" aria-label="近くのトイレ"><div className="toilet-page-header"><button className="back-button" onClick={closeToilet}>← 戻る</button><strong>近くのトイレ</strong></div><div className="toilet-page-scroll"><ScenicHeader eyebrow="NEARBY TOILETS" title="近くのトイレ" lead={gps?'現在地から近い順に表示します。':'現在地未取得のため、西山公園周辺から表示します。'} label="快適に冒険"/><button className="secondary toilet-locate" onClick={locate}>現在地を取得</button>{nearbyToilets.slice(0,8).map((toilet,index)=><div className="toilet-row" key={toilet.id}><b><i>{index+1}</i>{toilet.name}</b><span>{gps&&toilet.latitude!==null&&toilet.longitude!==null?`${Math.round(distance(gps,{lat:toilet.latitude,lng:toilet.longitude}))}m`:'現在地未取得'}</span></div>)}<p className="source-note">公共トイレ{openData.counts.publicToilets}件を読込済み · 提供：福井県鯖江市</p></div></section>}
+    {toiletOpen&&<section className="toilet-page" aria-label="近くのトイレ"><div className="toilet-page-header"><button className="back-button" onClick={closeToilet}>← 戻る</button><strong>近くのトイレ</strong></div><div className="toilet-page-scroll"><ScenicHeader eyebrow="NEARBY TOILETS" title="近くのトイレ" lead={gps?'現在地から近い順に表示します。':'現在地未取得のため、西山公園周辺から表示します。'} label="快適に冒険"/><button className="secondary toilet-locate" onClick={locate}>現在地を取得</button>{selectedToiletPoints.length>0&&<section className="toilet-map-panel" id="selected-toilet-map" aria-label="選択したトイレの地図"><div className="location-map-heading"><div><small>SELECTED TOILET</small><strong>{selectedToilet?.name}</strong></div><span>{selectedToiletDistance!==null?`約${selectedToiletDistance}m`:'距離未取得'}</span></div><QuestMap quests={emptyMapPoints} toilets={selectedToiletPoints} parking={emptyMapPoints} busStops={emptyMapPoints} currentLocation={gps} focusCurrentAndPoints highlightedPointId={selectedToiletId} compact/><div className="map-key location-map-key"><span><i className="key-current"/>現在地</span><span><i className="key-toilet"/>選択したトイレ</span></div>{!gps&&<p className="toilet-map-note">現在地を取得すると、トイレとの位置関係を表示します。</p>}</section>}{nearbyToilets.slice(0,8).map((toilet,index)=>{const hasCoordinates=toilet.latitude!==null&&toilet.longitude!==null;return <button type="button" className={`toilet-row toilet-selectable ${selectedToiletId===toilet.id?'selected':''}`} key={toilet.id} onClick={()=>hasCoordinates&&selectToilet(toilet.id)} disabled={!hasCoordinates} aria-pressed={selectedToiletId===toilet.id}><b><i>{index+1}</i><span>{toilet.name}</span></b><span className="toilet-row-meta"><strong>{gps&&hasCoordinates?`${Math.round(distance(gps,{lat:toilet.latitude!,lng:toilet.longitude!}))}m`:'現在地未取得'}</strong><small>{hasCoordinates?'◈ このトイレを地図で見る':'座標データなし'}</small></span></button>})}<p className="source-note">公共トイレ{openData.counts.publicToilets}件を読込済み · 提供：福井県鯖江市</p></div></section>}
     {featureNotice&&<div className="modal feature-notice" role="dialog" aria-modal="true" aria-labelledby="feature-notice-title" onClick={()=>setFeatureNotice(null)}><div className="feature-notice-card" onClick={event=>event.stopPropagation()}><button className="modal-close" onClick={()=>setFeatureNotice(null)} aria-label="閉じる">×</button><span className="notice-flag">NISHIYAMA QUEST</span><h2 id="feature-notice-title">{featureNotice.title}</h2><p>{featureNotice.text}</p>{featureNotice.kind==='titles'&&<div className="title-history">{!earnedTitles.length&&<p className="no-titles">まだ称号を獲得していません</p>}{allTitles.map(name=>{const earned=earnedTitles.find(item=>item.title===name);return <div className={`title-history-row ${earned?'earned':'locked'}`} key={name}><span>{earned?'★':'◇'}</span><div><b>{name}</b><small>{earned?`初回獲得日：${new Date(earned.firstEarnedAt).toLocaleDateString('ja-JP')}`:'未獲得'}</small></div></div>})}</div>}{featureNotice.action&&<button className="primary" onClick={featureNotice.action}>{featureNotice.actionLabel} <span>›</span></button>}<button className="text-link" onClick={()=>setFeatureNotice(null)}>閉じる</button></div></div>}
   </section></main>;
 }

@@ -16,12 +16,15 @@ type QuestMapProps = {
   parking: MapPoint[];
   busStops: MapPoint[];
   currentLocation: { lat: number; lng: number } | null;
+  focusCurrentAndPoints?: boolean;
+  highlightedPointId?: string;
+  compact?: boolean;
 };
 
 const iconHtml = (kind: string, label: string) =>
   `<span class="map-symbol map-symbol-${kind}"><b>${label}</b></span>`;
 
-export default function QuestMap({ quests, toilets, parking, busStops, currentLocation }: QuestMapProps) {
+export default function QuestMap({ quests, toilets, parking, busStops, currentLocation, focusCurrentAndPoints = false, highlightedPointId, compact = false }: QuestMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const currentLayerRef = useRef<import('leaflet').LayerGroup | null>(null);
@@ -54,9 +57,9 @@ export default function QuestMap({ quests, toilets, parking, busStops, currentLo
       tiles.on('tileerror',()=>setMapStatus('error'));
       tiles.addTo(map);
 
-      const makeIcon = (kind: string, label: string) => L.divIcon({
+      const makeIcon = (kind: string, label: string, highlighted = false) => L.divIcon({
         className: 'quest-map-icon',
-        html: iconHtml(kind, label),
+        html: iconHtml(highlighted ? `${kind}-selected` : kind, label),
         iconSize: [34, 42],
         iconAnchor: [17, 38],
         popupAnchor: [0, -38],
@@ -65,7 +68,7 @@ export default function QuestMap({ quests, toilets, parking, busStops, currentLo
       const addPoints = (points: MapPoint[], kind: string, label: string, layer: import('leaflet').LayerGroup) => {
         points.forEach((point, index) => {
           const markerLabel = kind === 'quest' ? String(index + 1) : label;
-          const marker = L.marker([point.latitude, point.longitude], { icon: makeIcon(kind, markerLabel) });
+          const marker = L.marker([point.latitude, point.longitude], { icon: makeIcon(kind, markerLabel, point.id === highlightedPointId) });
           const popup = document.createElement('div');
           const heading = document.createElement('strong');
           const coordinates = document.createElement('small');
@@ -106,7 +109,14 @@ export default function QuestMap({ quests, toilets, parking, busStops, currentLo
         L.marker([currentLocation.lat, currentLocation.lng], {
           icon: makeIcon('current', '●'),
         }).bindPopup('現在地').addTo(currentLayer);
-        map.flyTo([currentLocation.lat, currentLocation.lng], 17, { duration: 0.8 });
+        if (focusCurrentAndPoints && allPoints.length) {
+          map.fitBounds([
+            [currentLocation.lat, currentLocation.lng],
+            ...allPoints.map((point) => [point.latitude, point.longitude] as [number, number]),
+          ], { padding: [42, 42], maxZoom: 18 });
+        } else {
+          map.flyTo([currentLocation.lat, currentLocation.lng], 17, { duration: 0.8 });
+        }
       }
       window.setTimeout(() => map?.invalidateSize(), 0);
     }).catch(()=>setMapStatus('error'));
@@ -117,7 +127,7 @@ export default function QuestMap({ quests, toilets, parking, busStops, currentLo
       mapRef.current = null;
       map?.remove();
     };
-  }, [quests, toilets, parking, busStops]);
+  }, [quests, toilets, parking, busStops, focusCurrentAndPoints, highlightedPointId]);
 
   useEffect(() => {
     if (!currentLocation || !mapRef.current || !currentLayerRef.current) return;
@@ -134,10 +144,18 @@ export default function QuestMap({ quests, toilets, parking, busStops, currentLo
           popupAnchor: [0, -40],
         }),
       }).bindPopup('現在地').addTo(currentLayerRef.current);
-      mapRef.current.flyTo([currentLocation.lat, currentLocation.lng], 17, { duration: 0.8 });
+      const allPoints = [...quests, ...toilets, ...parking, ...busStops];
+      if (focusCurrentAndPoints && allPoints.length) {
+        mapRef.current.fitBounds([
+          [currentLocation.lat, currentLocation.lng],
+          ...allPoints.map((point) => [point.latitude, point.longitude] as [number, number]),
+        ], { padding: [42, 42], maxZoom: 18 });
+      } else {
+        mapRef.current.flyTo([currentLocation.lat, currentLocation.lng], 17, { duration: 0.8 });
+      }
     });
     return () => { cancelled = true; };
-  }, [currentLocation]);
+  }, [currentLocation, focusCurrentAndPoints, quests, toilets, parking, busStops]);
 
-  return <div className="leaflet-map-wrap"><div ref={containerRef} className="leaflet-map" aria-label="西山公園周辺のOpenStreetMap"/>{mapStatus!=='ready'&&<p className={`map-status ${mapStatus}`}>{mapStatus==='error'?'地図を読み込めませんでした。通信状況を確認してください。':'地図を読み込んでいます…'}</p>}</div>;
+  return <div className={`leaflet-map-wrap ${compact?'leaflet-map-wrap-compact':''}`}><div ref={containerRef} className="leaflet-map" aria-label="西山公園周辺のOpenStreetMap"/>{mapStatus!=='ready'&&<p className={`map-status ${mapStatus}`}>{mapStatus==='error'?'地図を読み込めませんでした。通信状況を確認してください。':'地図を読み込んでいます…'}</p>}</div>;
 }
