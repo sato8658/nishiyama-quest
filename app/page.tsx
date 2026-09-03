@@ -151,10 +151,11 @@ export default function Home() {
   const currentTitle=resolveTitle(chosen,done.length,foundRedPandas.length);
   const currentRouteName=routeTitle(companion,chosen);
   const automaticCardDesign=useMemo<AdventureCardDesign>(()=>{
+    if(foundRedPandas.length>=3)return 'redpanda';
     if(points>=500||done.length>=5)return 'master';
-    if(foundRedPandas.length>0)return 'redpanda';
     const natureQuestCount=route.filter(spot=>['写真','自然','季節','展望','景色'].some(type=>spot.type.includes(type))).length;
-    return chosen.some(item=>item==='写真'||item==='自然')||natureQuestCount>=2?'nature':'master';
+    const natureFocused=chosen.some(item=>['写真','自然'].includes(item))||natureQuestCount>=Math.max(1,Math.ceil(route.length/2));
+    return natureFocused?'nature':'master';
   },[points,done.length,foundRedPandas.length,route,chosen]);
   const completeReady=routeReady&&route.length>0&&done.length===route.length;
   const adventureInProgress=routeReady&&route.length>0&&!completeReady;
@@ -343,18 +344,18 @@ export default function Home() {
 
     {screen==='location'&&<div className="screen">
       <ScenicHeader eyebrow="YOUR LOCATION" title="現在地を確認" lead="クエスト地点から60m以内で到着です。" label="迷わず進もう"/>
-      {gps&&locationQuestPoints.length>0&&<section className="location-map-panel location-map-primary" aria-label="現在地とクエスト地点"><div className="location-map-heading"><div><small>POSITION MAP（位置マップ）</small><strong>{active?.name}</strong></div><span>{activeDistance!==null?`地点まで約${activeDistance}m`:'--'}</span></div>{gpsAccuracy!==null&&<p className="location-map-accuracy">現在のGPS精度：約±{gpsAccuracy}m</p>}<QuestMap quests={locationQuestPoints} toilets={emptyMapPoints} parking={emptyMapPoints} busStops={emptyMapPoints} currentLocation={gps} focusCurrentAndPoints compact/><div className="map-key location-map-key"><span><i className="key-current"/>現在地</span><span><i className="key-quest"/>クエスト地点</span></div></section>}
-      <div className={`location-card ${gps?'location-card-compact':''}`}><div className="radar"><i/></div><strong>{demo?'QUEST POINTに到着！':reached?'QUEST POINTに到着！':gps?'現在地を取得済み':'現在地を取得してください'}</strong><p>{demo?'GPS到着判定のみスキップしています。':activeDistance!==null?`クエスト地点まで直線距離 約 ${activeDistance}m`:'現在地を取得すると距離を計算します。'}</p></div>
+      {gps&&locationQuestPoints.length>0&&<section className="location-map-panel location-map-primary" aria-label="現在地とクエスト地点"><div className="location-map-heading"><div><small>POSITION MAP（位置マップ）</small><strong>{active?.name}</strong></div><span>{activeDistance!==null?`クエスト地点まで約${activeDistance}m`:'--'}</span></div>{gpsAccuracy!==null&&<p className="location-map-accuracy">現在の位置精度：約±{gpsAccuracy}m</p>}<QuestMap quests={locationQuestPoints} toilets={emptyMapPoints} parking={emptyMapPoints} busStops={emptyMapPoints} currentLocation={gps} focusCurrentAndPoints compact/><div className="map-key location-map-key"><span><i className="key-current"/>現在地</span><span><i className="key-quest"/>クエスト地点</span></div></section>}
+      <div className={`location-card ${gps?'location-card-compact':''}`}><div className="radar"><i/></div><strong>{demo?'QUEST POINTに到着！':reached?'QUEST POINTに到着！':gps?'現在地を取得済み':'現在地を取得してください'}</strong><p>{demo?'GPS到着判定のみスキップしています。':gps?'位置関係と距離は上の地図で確認できます。':'現在地を取得すると距離を計算します。'}</p></div>
       <button className="secondary" onClick={locate}>{gps?'現在地を再取得':'現在地を取得'}</button>
-      <div className="gps-privacy-note"><strong>位置情報の扱い</strong><p>現在地は端末内で目的地との距離確認に使用し、GPS座標そのものを保存・サーバー送信しません。地図表示時はOpenStreetMapの地図画像を読み込みます。</p>{gpsAccuracy!==null&&<b>現在の位置精度：約±{gpsAccuracy}m</b>}<small>GPSには周辺環境や端末により誤差が生じる場合があります。</small></div>
+      <div className="gps-privacy-note"><strong>位置情報の扱い</strong><p>現在地は端末内で目的地との距離確認に使用し、GPS座標そのものを保存・サーバー送信しません。地図表示時はOpenStreetMapの地図画像を読み込みます。</p><small>GPSには周辺環境や端末により誤差が生じる場合があります。</small></div>
       <label className="demo-toggle"><span><b>デモモード</b><small>審査会用：GPS到着判定のみスキップ</small></span><input type="checkbox" checked={demo} onChange={event=>setDemo(event.target.checked)}/></label>
       <div className="location-actions"><button className="primary location-map-button" onClick={()=>nav('map')}><span aria-hidden="true">◈</span>園内マップを大きく見る</button><button className="secondary" onClick={()=>nav('quest')}>クエストへ戻る <span>›</span></button></div>{gpsMessage&&<p className="status" role="status">{gpsMessage}</p>}
     </div>}
 
     {screen==='complete'&&<div className="screen complete">
       <div className="complete-visual"><img className="complete-bg" src="/assets/park-background.png" alt=""/><img className="complete-panda" src="/assets/explorer-red-panda.png" alt="冒険完了を祝う探検家レッサーパンダ"/><div><p className="step-count">ALL QUESTS CLEARED <span>全クエスト達成</span></p><h2>冒険<br/>COMPLETE!<small>冒険クリア！</small></h2><p>西山公園の冒険をやりきりました。</p></div></div>
-      <div className="stats"><span>訪れた場所<b>{done.length}</b></span><span>使用地点<b>実データ</b></span><span>獲得ポイント<b>{points}</b></span><span>達成クエスト<b>{done.length}</b></span></div>
-      {foundRedPandas.length>0&&<section className="complete-panda-record"><span>今日会えたレッサーパンダ</span><strong>{foundRedPandas.length}頭</strong><p>{foundRedPandas.join('・')}</p></section>}
+      <div className="stats"><span>達成クエスト<b>{done.length}個</b></span><span>獲得ポイント<b>{points} POINT</b></span><span>発見したレッサーパンダ<b>{foundRedPandas.length}頭</b></span><span>獲得称号<b className="complete-title-value">{currentTitle}</b></span></div>
+      {foundRedPandas.length>0&&<section className="complete-panda-record"><span>今日会えた子</span><p>{foundRedPandas.join('・')}</p></section>}
       <section className="adventure-card-builder" aria-labelledby="adventure-card-title">
         <h3 id="adventure-card-title">冒険カード完成！</h3>
         <div className="adventure-card-preview" aria-live="polite">{cardPreviewUrl?<img src={cardPreviewUrl} alt={`${adventureCardDesigns.find(item=>item.id===cardDesign)?.label}デザインの冒険カード`}/>:<div className="card-generating">{cardGenerating?'冒険結果をカードに書き込んでいます…':'プレビューを準備できませんでした'}</div>}</div>
