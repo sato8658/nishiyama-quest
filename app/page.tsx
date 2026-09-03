@@ -22,6 +22,12 @@ type Screen = 'top'|'transport'|'settings'|'route'|'map'|'quest'|'location'|'com
 type EarnedTitle = { title:string; firstEarnedAt:string };
 type FeatureNotice = { title:string; text:string; kind?:'titles'; actionLabel?:string; action?:()=>void };
 type AdventureProgress = {version:1;status:'active';currentQuest:number;completedQuestIds:string[];points:number;transport:string;companion:string;duration:string;interests:string[];routeIds:string[];foundRedPandas:string[];titleCandidate:string;updatedAt:string};
+type AdventureCardDesign = 'redpanda'|'nature'|'master';
+const adventureCardDesigns:{id:AdventureCardDesign;label:string;path:string;textColor:string;rows:number[]}[]=[
+  {id:'redpanda',label:'レッサーパンダ',path:'/images/adventure-cards/card_01_redpanda.png',textColor:'#402811',rows:[423,503,583,663,743]},
+  {id:'nature',label:'自然・フォト',path:'/images/adventure-cards/card_02_nature_photo.png',textColor:'#294231',rows:[405,493,581,669,757]},
+  {id:'master',label:'マスター',path:'/images/adventure-cards/card_03_master.png',textColor:'#102d45',rows:[425,505,585,665,745]},
+];
 
 const resolveTitle=(selectedInterests:string[],completedCount:number,foundPandaCount:number)=>foundPandaCount>=3?'レッサーパンダ博士':selectedInterests.includes('写真')&&completedCount>=4?'西山フォトマスター':completedCount>=5?'西山公園マスター':completedCount>=3?'西山公園冒険家':'西山公園ビギナー';
 
@@ -69,6 +75,10 @@ export default function Home() {
   const [gpsMessage,setGpsMessage]=useState('');
   const [questToast,setQuestToast]=useState('');
   const [cardSaveMessage,setCardSaveMessage]=useState('');
+  const [cardDesign,setCardDesign]=useState<AdventureCardDesign>('nature');
+  const [cardPreviewUrl,setCardPreviewUrl]=useState('');
+  const [cardBlob,setCardBlob]=useState<Blob|null>(null);
+  const [cardGenerating,setCardGenerating]=useState(false);
   const [foundPanda,setFoundPanda]=useState('');
   const [foundRedPandas,setFoundRedPandas]=useState<string[]>([]);
   const [toiletOpen,setToiletOpen]=useState(false);
@@ -81,7 +91,6 @@ export default function Home() {
   const [featureNotice,setFeatureNotice]=useState<FeatureNotice|null>(null);
   const [earnedTitles,setEarnedTitles]=useState<EarnedTitle[]>([]);
   const [titleHistoryLoaded,setTitleHistoryLoaded]=useState(false);
-  const cardRef=useRef<HTMLDivElement>(null);
   const gpsMessageTimerRef=useRef<number|null>(null);
   const questToastTimerRef=useRef<number|null>(null);
 
@@ -132,10 +141,73 @@ export default function Home() {
   const markPandaFound=()=>{if(!foundPanda||!reached||foundRedPandas.includes(foundPanda))return;setFoundRedPandas(currentFound=>[...currentFound,foundPanda]);setQuestToast(`🎉 ${foundPanda}を発見！`);if(questToastTimerRef.current)window.clearTimeout(questToastTimerRef.current);questToastTimerRef.current=window.setTimeout(()=>setQuestToast(''),2000);window.setTimeout(()=>document.querySelector('.panda-next-choice')?.scrollIntoView({behavior:'smooth',block:'center'}),100);};
   const currentTitle=resolveTitle(chosen,done.length,foundRedPandas.length);
   const currentRouteName=routeTitle(companion,chosen);
-  const cardDecoration=currentTitle.includes('レッサーパンダ')?'PANDA':currentTitle.includes('フォト')?'PHOTO':currentTitle.includes('マスター')?'MASTER':'QUEST';
-  const saveCard=()=>{try{const canvas=document.createElement('canvas');canvas.width=1080;canvas.height=1350;const context=canvas.getContext('2d');if(!context)throw new Error('canvas unavailable');const accent=currentTitle.includes('レッサーパンダ')?'#ef7a24':currentTitle.includes('フォト')?'#56a9d6':currentTitle.includes('マスター')?'#e6a915':'#dce94f';context.fillStyle='#123f27';context.fillRect(0,0,1080,1350);context.fillStyle=accent;context.beginPath();context.arc(900,150,92,0,Math.PI*2);context.fill();context.fillStyle='#123f27';context.font='bold 30px Arial';context.textAlign='center';context.fillText(cardDecoration,900,162);context.textAlign='left';context.fillStyle='#dce94f';context.font='bold 72px Arial';context.fillText('NISHIYAMA QUEST',80,150);context.fillStyle='#fff';context.font='bold 92px Arial';context.fillText('QUEST',80,330);context.fillText('COMPLETE!',80,430);context.font='bold 38px Arial';context.fillStyle=accent;context.fillText(currentRouteName,80,540);context.fillStyle='#fff';context.font='44px Arial';context.fillText(`VISITED  ${done.length}`,80,690);context.fillText(`POINTS  ${points}`,80,775);if(foundRedPandas.length)context.fillText(`RED PANDAS  ${foundRedPandas.length}`,80,860);context.fillText(`TITLE  ${currentTitle}`,80,945);context.font='32px Arial';context.fillText(new Date().toLocaleDateString('ja-JP'),80,1180);const link=document.createElement('a');link.download='nishiyama-quest-card.png';link.href=canvas.toDataURL('image/png');document.body.appendChild(link);link.click();link.remove();setCardSaveMessage('画像保存を開始しました。保存されない場合は、画像を長押しして保存してください。');}catch{setCardSaveMessage('画像を保存できませんでした。別のブラウザでお試しください。');}};
+  const automaticCardDesign=useMemo<AdventureCardDesign>(()=>{
+    if(points>=500||done.length>=5)return 'master';
+    if(foundRedPandas.length>0)return 'redpanda';
+    const natureQuestCount=route.filter(spot=>['写真','自然','季節','展望','景色'].some(type=>spot.type.includes(type))).length;
+    return chosen.some(item=>item==='写真'||item==='自然')||natureQuestCount>=2?'nature':'master';
+  },[points,done.length,foundRedPandas.length,route,chosen]);
   const completeReady=routeReady&&route.length>0&&done.length===route.length;
   const adventureInProgress=routeReady&&route.length>0&&!completeReady;
+
+  useEffect(()=>{
+    if(screen!=='complete')return;
+    const timer=window.setTimeout(()=>setCardDesign(automaticCardDesign),0);
+    return()=>window.clearTimeout(timer);
+  },[screen,automaticCardDesign]);
+
+  useEffect(()=>{
+    if(screen!=='complete'||!completeReady)return;
+    let cancelled=false;
+    let objectUrl='';
+    const generateCard=async()=>{
+      setCardGenerating(true);setCardPreviewUrl('');setCardBlob(null);setCardSaveMessage('冒険カードを作成しています…');
+      try{
+        const design=adventureCardDesigns.find(item=>item.id===cardDesign)??adventureCardDesigns[0];
+        const background=new Image();
+        await new Promise<void>((resolve,reject)=>{background.onload=()=>resolve();background.onerror=()=>reject(new Error('background unavailable'));background.src=design.path;});
+        if('fonts' in document)await document.fonts.ready;
+        const canvas=document.createElement('canvas');canvas.width=1536;canvas.height=1024;
+        const context=canvas.getContext('2d');if(!context)throw new Error('canvas unavailable');
+        context.drawImage(background,0,0,canvas.width,canvas.height);
+        context.fillStyle=design.textColor;context.textAlign='right';context.textBaseline='middle';
+        context.font='900 31px "Yu Gothic", Meiryo, sans-serif';
+        const date=new Date();
+        context.fillText(`${date.getFullYear()}年 ${date.getMonth()+1}月 ${date.getDate()}日`,1120,design.rows[0]);
+        context.font='900 39px "Yu Gothic", Meiryo, sans-serif';
+        context.fillText(String(foundRedPandas.length),1120,design.rows[1]);
+        context.fillText(String(done.length),1120,design.rows[2]);
+        context.fillText(String(points),1120,design.rows[3]);
+        let titleSize=34;context.font=`900 ${titleSize}px "Yu Gothic", Meiryo, sans-serif`;
+        while(context.measureText(currentTitle).width>470&&titleSize>22){titleSize-=2;context.font=`900 ${titleSize}px "Yu Gothic", Meiryo, sans-serif`;}
+        context.fillText(currentTitle,1120,design.rows[4]);
+        const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('png unavailable')),'image/png'));
+        if(cancelled)return;
+        objectUrl=URL.createObjectURL(blob);setCardBlob(blob);setCardPreviewUrl(objectUrl);setCardSaveMessage('冒険カードを作成しました。保存方法を選んでください。');
+      }catch{
+        if(!cancelled)setCardSaveMessage('冒険カードを作成できませんでした。別のブラウザでお試しください。');
+      }finally{if(!cancelled)setCardGenerating(false);}
+    };
+    void generateCard();
+    return()=>{cancelled=true;if(objectUrl)URL.revokeObjectURL(objectUrl);};
+  },[screen,completeReady,cardDesign,done.length,points,foundRedPandas.length,currentTitle]);
+
+  const saveOrShareCard=async()=>{
+    if(!cardBlob||cardGenerating)return;
+    const date=new Date().toISOString().slice(0,10);
+    const file=new File([cardBlob],`nishiyama-quest-${date}.png`,{type:'image/png'});
+    try{
+      const shareData:ShareData={files:[file],title:'NISHIYAMA QUEST 冒険カード',text:`${currentRouteName}をクリアしました！`};
+      if(typeof navigator.share==='function'&&(!navigator.canShare||navigator.canShare(shareData))){
+        setCardSaveMessage('共有メニューから保存・共有方法を選んでください。');
+        await navigator.share(shareData);setCardSaveMessage('共有操作を終了しました。');return;
+      }
+    }catch(error){
+      if(error instanceof DOMException&&error.name==='AbortError'){setCardSaveMessage('共有をキャンセルしました。');return;}
+    }
+    const downloadUrl=URL.createObjectURL(cardBlob);const link=document.createElement('a');link.download=file.name;link.href=downloadUrl;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(downloadUrl),1000);
+    setCardSaveMessage('ダウンロードを開始しました。端末のダウンロードフォルダをご確認ください。');
+  };
 
   useEffect(()=>{
     try{
@@ -278,8 +350,18 @@ export default function Home() {
       <div className="complete-visual"><img className="complete-bg" src="/assets/park-background.png" alt=""/><img className="complete-panda" src="/assets/explorer-red-panda.png" alt="冒険完了を祝う探検家レッサーパンダ"/><div><p className="step-count">ALL QUESTS CLEARED <span>全クエスト達成</span></p><h2>冒険<br/>COMPLETE!<small>冒険クリア！</small></h2><p>西山公園の冒険をやりきりました。</p></div></div>
       <div className="stats"><span>訪れた場所<b>{done.length}</b></span><span>使用地点<b>実データ</b></span><span>獲得ポイント<b>{points}</b></span><span>達成クエスト<b>{done.length}</b></span></div>
       {foundRedPandas.length>0&&<section className="complete-panda-record"><span>今日会えたレッサーパンダ</span><strong>{foundRedPandas.length}頭</strong><p>{foundRedPandas.join('・')}</p></section>}
-      <div className={`adventure-card card-${cardDecoration.toLowerCase()}`} ref={cardRef}><small>NISHIYAMA QUEST</small><i className="card-decoration">{cardDecoration}</i><h3>QUEST<br/>COMPLETE!</h3><p className="card-route">{currentRouteName}</p><p>訪問スポット {done.length}<br/>獲得ポイント {points}{foundRedPandas.length>0&&<><br/>レッサーパンダ発見 {foundRedPandas.length}頭</>}</p><strong>称号「{currentTitle}」</strong><time>{new Date().toLocaleDateString('ja-JP')}</time></div>
-      <button className="primary" onClick={saveCard}>冒険カードを画像保存</button>{cardSaveMessage&&<p className="card-save-status" role="status">{cardSaveMessage}</p>}<button className="text-link" onClick={()=>{setDone([]);setPoints(0);setCurrent(0);setRouteReady(false);setSavedRouteIds([]);setFoundPanda('');setFoundRedPandas([]);setCardSaveMessage('');nav('top');}}>別のルートに挑戦する</button>
+      <section className="adventure-card-builder" aria-labelledby="adventure-card-title">
+        <h3 id="adventure-card-title">冒険カード完成！</h3>
+        <div className="adventure-card-preview" aria-live="polite">{cardPreviewUrl?<img src={cardPreviewUrl} alt={`${adventureCardDesigns.find(item=>item.id===cardDesign)?.label}デザインの冒険カード`}/>:<div className="card-generating">{cardGenerating?'冒険結果をカードに書き込んでいます…':'プレビューを準備できませんでした'}</div>}</div>
+        {foundRedPandas.length>0&&<p className="card-panda-names">今日会えた子：{foundRedPandas.join('、')}</p>}
+        <p className="card-design-label">カードデザインを選ぶ</p>
+        <div className="card-design-picker" role="radiogroup" aria-label="冒険カードのデザイン">
+          {adventureCardDesigns.map(design=><button key={design.id} type="button" role="radio" aria-checked={cardDesign===design.id} className={cardDesign===design.id?'selected':''} onClick={()=>setCardDesign(design.id)}><img src={design.path} alt=""/><span>{cardDesign===design.id?'✓ ':''}{design.label}</span></button>)}
+        </div>
+        <button className="primary card-share-button" onClick={()=>void saveOrShareCard()} disabled={!cardBlob||cardGenerating}>冒険カードを保存・共有する</button>
+        {cardSaveMessage&&<p className="card-save-status" role="status">{cardSaveMessage}</p>}
+      </section>
+      <button className="secondary" onClick={()=>nav('top')}>TOPへ戻る</button><button className="text-link" onClick={()=>{setDone([]);setPoints(0);setCurrent(0);setRouteReady(false);setSavedRouteIds([]);setFoundPanda('');setFoundRedPandas([]);setCardSaveMessage('');nav('top');}}>別のルートに挑戦する</button>
     </div>}
 
     {screen==='data'&&<div className="screen data-page">
