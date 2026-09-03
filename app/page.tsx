@@ -23,11 +23,20 @@ type EarnedTitle = { title:string; firstEarnedAt:string };
 type FeatureNotice = { title:string; text:string; kind?:'titles'; actionLabel?:string; action?:()=>void };
 type AdventureProgress = {version:1;status:'active';currentQuest:number;completedQuestIds:string[];points:number;transport:string;companion:string;duration:string;interests:string[];routeIds:string[];foundRedPandas:string[];titleCandidate:string;updatedAt:string};
 type AdventureCardDesign = 'redpanda'|'nature'|'master';
-const adventureCardDesigns:{id:AdventureCardDesign;label:string;path:string;textColor:string;rows:number[]}[]=[
-  {id:'redpanda',label:'レッサーパンダ',path:'/images/adventure-cards/card_01_redpanda.png',textColor:'#402811',rows:[423,503,583,663,743]},
-  {id:'nature',label:'自然・フォト',path:'/images/adventure-cards/card_02_nature_photo.png',textColor:'#294231',rows:[405,493,581,669,757]},
-  {id:'master',label:'マスター',path:'/images/adventure-cards/card_03_master.png',textColor:'#102d45',rows:[425,505,585,665,745]},
+type CardTextPosition = {x:number;y:number;maxWidth:number;fontSize:number;minFontSize:number};
+type AdventureCardLayout = {date:CardTextPosition;pandas:CardTextPosition;quests:CardTextPosition;points:CardTextPosition;title:CardTextPosition};
+const adventureCardDesigns:{id:AdventureCardDesign;label:string;path:string;textColor:string;layout:AdventureCardLayout}[]=[
+  {id:'redpanda',label:'レッサーパンダ',path:'/images/adventure-cards/card_template_01_redpanda_blank.png',textColor:'#402811',layout:{date:{x:1220,y:423,maxWidth:500,fontSize:34,minFontSize:28},pandas:{x:1220,y:503,maxWidth:500,fontSize:38,minFontSize:30},quests:{x:1220,y:583,maxWidth:500,fontSize:38,minFontSize:30},points:{x:1220,y:663,maxWidth:500,fontSize:38,minFontSize:30},title:{x:1220,y:743,maxWidth:500,fontSize:36,minFontSize:26}}},
+  {id:'nature',label:'自然・フォト',path:'/images/adventure-cards/card_template_02_nature_photo_blank.png',textColor:'#294231',layout:{date:{x:1100,y:410,maxWidth:430,fontSize:34,minFontSize:28},pandas:{x:1100,y:495,maxWidth:430,fontSize:38,minFontSize:30},quests:{x:1100,y:580,maxWidth:430,fontSize:38,minFontSize:30},points:{x:1100,y:665,maxWidth:430,fontSize:38,minFontSize:30},title:{x:1100,y:750,maxWidth:430,fontSize:36,minFontSize:26}}},
+  {id:'master',label:'マスター',path:'/images/adventure-cards/card_template_03_master_blank.png',textColor:'#102d45',layout:{date:{x:1070,y:426,maxWidth:405,fontSize:34,minFontSize:28},pandas:{x:1070,y:506,maxWidth:405,fontSize:38,minFontSize:30},quests:{x:1070,y:585,maxWidth:405,fontSize:38,minFontSize:30},points:{x:1070,y:666,maxWidth:405,fontSize:38,minFontSize:30},title:{x:1070,y:746,maxWidth:405,fontSize:36,minFontSize:26}}},
 ];
+
+const drawFittedCardText=(context:CanvasRenderingContext2D,text:string,position:CardTextPosition)=>{
+  let size=position.fontSize;
+  context.font=`900 ${size}px "Yu Gothic", Meiryo, sans-serif`;
+  while(context.measureText(text).width>position.maxWidth&&size>position.minFontSize){size-=2;context.font=`900 ${size}px "Yu Gothic", Meiryo, sans-serif`;}
+  context.fillText(text,position.x,position.y);
+};
 
 const resolveTitle=(selectedInterests:string[],completedCount:number,foundPandaCount:number)=>foundPandaCount>=3?'レッサーパンダ博士':selectedInterests.includes('写真')&&completedCount>=4?'西山フォトマスター':completedCount>=5?'西山公園マスター':completedCount>=3?'西山公園冒険家':'西山公園ビギナー';
 
@@ -171,16 +180,12 @@ export default function Home() {
         const context=canvas.getContext('2d');if(!context)throw new Error('canvas unavailable');
         context.drawImage(background,0,0,canvas.width,canvas.height);
         context.fillStyle=design.textColor;context.textAlign='right';context.textBaseline='middle';
-        context.font='900 31px "Yu Gothic", Meiryo, sans-serif';
         const date=new Date();
-        context.fillText(`${date.getFullYear()}年 ${date.getMonth()+1}月 ${date.getDate()}日`,1120,design.rows[0]);
-        context.font='900 39px "Yu Gothic", Meiryo, sans-serif';
-        context.fillText(String(foundRedPandas.length),1120,design.rows[1]);
-        context.fillText(String(done.length),1120,design.rows[2]);
-        context.fillText(String(points),1120,design.rows[3]);
-        let titleSize=34;context.font=`900 ${titleSize}px "Yu Gothic", Meiryo, sans-serif`;
-        while(context.measureText(currentTitle).width>470&&titleSize>22){titleSize-=2;context.font=`900 ${titleSize}px "Yu Gothic", Meiryo, sans-serif`;}
-        context.fillText(currentTitle,1120,design.rows[4]);
+        drawFittedCardText(context,`${date.getFullYear()}年${date.getMonth()+1}月${date.getDate()}日`,design.layout.date);
+        drawFittedCardText(context,`${foundRedPandas.length}頭`,design.layout.pandas);
+        drawFittedCardText(context,`${done.length}個`,design.layout.quests);
+        drawFittedCardText(context,`${points} POINT`,design.layout.points);
+        drawFittedCardText(context,currentTitle,design.layout.title);
         const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('png unavailable')),'image/png'));
         if(cancelled)return;
         objectUrl=URL.createObjectURL(blob);setCardBlob(blob);setCardPreviewUrl(objectUrl);setCardSaveMessage('冒険カードを作成しました。保存方法を選んでください。');
