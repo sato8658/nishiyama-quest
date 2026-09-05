@@ -21,7 +21,7 @@ const anchorInterests = (type:string) => type === '場所探し' ? ['ゲーム',
 type Screen = 'top'|'transport'|'settings'|'route'|'map'|'quest'|'location'|'complete'|'data';
 type EarnedTitle = { title:string; firstEarnedAt:string };
 type FeatureNotice = { title:string; text:string; kind?:'titles'; actionLabel?:string; action?:()=>void };
-type AdventureProgress = {version:1;status:'active';currentQuest:number;completedQuestIds:string[];points:number;transport:string;companion:string;duration:string;interests:string[];routeIds:string[];foundRedPandas:string[];titleCandidate:string;updatedAt:string};
+type AdventureProgress = {version:1;status:'active';currentQuest:number;completedQuestIds:string[];points:number;transport:string;companion:string;duration:string;interests:string[];routeIds:string[];foundRedPandas:string[];titleCandidate:string;demoMode?:boolean;updatedAt:string};
 type AdventureCardDesign = 'redpanda'|'nature'|'master';
 type CardTextPosition = {x:number;y:number;maxWidth:number;fontSize:number;minFontSize:number};
 type AdventureCardLayout = {date:CardTextPosition;pandas:CardTextPosition;quests:CardTextPosition;points:CardTextPosition;title:CardTextPosition};
@@ -145,7 +145,7 @@ export default function Home() {
   const toggle=(value:string)=>setChosen(currentValues=>currentValues.includes(value)?currentValues.filter(item=>item!==value):[...currentValues,value]);
   const locate=()=>navigator.geolocation ? navigator.geolocation.getCurrentPosition(position=>{setGps({lat:position.coords.latitude,lng:position.coords.longitude});setGpsAccuracy(Math.round(position.coords.accuracy));setGpsMessage('現在地を取得しました');if(gpsMessageTimerRef.current)window.clearTimeout(gpsMessageTimerRef.current);gpsMessageTimerRef.current=window.setTimeout(()=>setGpsMessage(''),2000);},()=>{setGpsAccuracy(null);setGpsMessage('現在地を取得できませんでした。デモモードをご利用ください。');}) : setGpsMessage('このブラウザは現在地取得に対応していません。');
   const selectToilet=(id:string)=>{setSelectedToiletId(id);if(!gps)locate();window.setTimeout(()=>document.getElementById('selected-toilet-map')?.scrollIntoView({behavior:'smooth',block:'start'}),0);};
-  const reached=Boolean(demo||(gps&&active?.lat&&active?.lng&&distance(gps,{lat:active.lat,lng:active.lng})<=60));
+  const reached=Boolean(demo||(gps&&active&&typeof active.lat==='number'&&typeof active.lng==='number'&&distance(gps,{lat:active.lat,lng:active.lng})<=60));
   const finishQuest=()=>{if(!active||done.includes(active.id))return;const next=[...done,active.id];setDone(next);setPoints(value=>value+100);setQuestToast('100 POINT GET!');if(next.length===route.length)setTimeout(()=>nav('complete'),650);else setTimeout(()=>{setCurrent(value=>value+1);setFoundPanda('');setQuestToast('');},650);};
   const markPandaFound=()=>{if(!foundPanda||!reached||foundRedPandas.includes(foundPanda))return;setFoundRedPandas(currentFound=>[...currentFound,foundPanda]);setQuestToast(`🎉 ${foundPanda}を発見！`);if(questToastTimerRef.current)window.clearTimeout(questToastTimerRef.current);questToastTimerRef.current=window.setTimeout(()=>setQuestToast(''),2000);window.setTimeout(()=>document.querySelector('.panda-next-choice')?.scrollIntoView({behavior:'smooth',block:'center'}),100);};
   const currentTitle=resolveTitle(chosen,done.length,foundRedPandas.length);
@@ -243,7 +243,7 @@ export default function Home() {
           const restoredPandas=(parsed.foundRedPandas||[]).filter((item):item is string=>typeof item==='string'&&visibleRedPandas.some(record=>record.name===item));
           if(!restoredRouteIds.length){try{window.localStorage.removeItem(progressStorageKey);}catch{};setProgressLoaded(true);return;}
           setTransport(parsed.transport!);setCompanion(parsed.companion!);setDuration(parsed.duration!);setChosen(parsed.interests!.filter((item):item is string=>typeof item==='string'));
-          setSavedRouteIds(restoredRouteIds);setDone(restoredDone);setFoundRedPandas(restoredPandas);
+          setSavedRouteIds(restoredRouteIds);setDone(restoredDone);setFoundRedPandas(restoredPandas);setDemo(parsed.demoMode===true);
           setCurrent(Math.min(restoredRouteIds.length-1,Math.max(0,Math.floor(parsed.currentQuest!))));setPoints(Math.max(0,parsed.points!));setRouteReady(true);setHasSavedAdventure(true);
         }
       }
@@ -256,9 +256,9 @@ export default function Home() {
 
   useEffect(()=>{
     if(!progressLoaded||!adventureInProgress)return;
-    const progress:AdventureProgress={version:1,status:'active',currentQuest:current,completedQuestIds:done,points,transport,companion,duration,interests:chosen,routeIds:route.map(spot=>spot.id),foundRedPandas,titleCandidate:currentTitle,updatedAt:new Date().toISOString()};
+    const progress:AdventureProgress={version:1,status:'active',currentQuest:current,completedQuestIds:done,points,transport,companion,duration,interests:chosen,routeIds:route.map(spot=>spot.id),foundRedPandas,titleCandidate:currentTitle,demoMode:demo,updatedAt:new Date().toISOString()};
     try{window.localStorage.setItem(progressStorageKey,JSON.stringify(progress));setHasSavedAdventure(true);}catch{/* 保存不可でも冒険は継続 */}
-  },[progressLoaded,adventureInProgress,current,done,points,transport,companion,duration,chosen,route,foundRedPandas,currentTitle]);
+  },[progressLoaded,adventureInProgress,current,done,points,transport,companion,duration,chosen,route,foundRedPandas,currentTitle,demo]);
 
   useEffect(()=>{
     if(!titleHistoryLoaded||screen!=='complete'||!completeReady)return;
@@ -334,6 +334,7 @@ export default function Home() {
     </div>}
 
     {screen==='quest'&&active&&<div className="screen quest-screen">
+      {demo&&<div className="demo-mode-badge" role="status">DEMO MODE｜GPS到着判定をスキップ中</div>}
       <div className="quest-top"><div><p className="step-count">CURRENT QUEST <span>現在のクエスト</span></p><div className="quest-counter">⚑ QUEST <small>クエスト</small> <b>{String(current+1).padStart(2,'0')}</b> / {String(route.length).padStart(2,'0')}</div></div><Guide label="挑戦しよう"/></div>
       <h2>{active.type==='レッサーパンダ'?'今日会えたレッサーパンダを探そう！':active.type==='写真'?'今日の一枚を見つけよう！':`${active.type}クエストに挑戦！`}</h2>
       {active.type==='レッサーパンダ'?<div className="panda-quest-panel"><div className="panda-found-count"><span>見つけたレッサーパンダ</span><strong>{foundRedPandas.length} <small>/ {visibleRedPandas.length}</small></strong></div><p className="panda-exhibit-note">展示される個体は日によって変わります。今日会えた子を選んでね。</p><div className="panda-choice-grid">{visibleRedPandas.map(record=>{const panda=openData.redPandas.find(item=>item.name===record.name);const individual=openData.redPandaIndividuals.find(item=>item.name===record.name);const isFound=foundRedPandas.includes(record.name);return <button type="button" className={`panda-choice ${foundPanda===record.name?'selected':''} ${isFound?'found':''}`} key={record.name} onClick={()=>setFoundPanda(record.name)} aria-pressed={foundPanda===record.name}><img src={record.photo?.imagePath||redPandaPhotoPlaceholder} alt={record.photo?`レッサーパンダ ${record.name}`:`${record.name} 写真準備中`}/><strong>{record.name}</strong><small>{panda?.gender||individual?.gender||'性別データなし'}</small>{!record.photo&&<span className="photo-pending">写真準備中</span>}{isFound&&<em>✓ 見つけた！</em>}</button>})}</div>{selectedPandaRecord&&<div className="panda-profile-wrap"><div className="panda-profile"><img src={selectedPandaRecord.photo?.imagePath||redPandaPhotoPlaceholder} alt={selectedPandaRecord.photo?`選択したレッサーパンダ ${selectedPandaRecord.name}`:`${selectedPandaRecord.name} 写真準備中`}/><div><span>{foundRedPandas.includes(selectedPandaRecord.name)?'発見済み':'今日会えた子'}</span><h3>{selectedPandaRecord.name}</h3><p>{[selectedPanda?.gender||selectedPandaIndividual?.gender,selectedPandaBirthDate&&`生年月日 ${formatOpenDate(selectedPandaBirthDate)}`,selectedPanda?.birthplace&&`出身 ${selectedPanda.birthplace}`,selectedPanda?.profile||selectedPandaIndividual?.remarks].filter(Boolean).join(' · ')||'プロフィールデータは準備中です。'}</p>{selectedPandaRecord.photo?<a href={selectedPandaRecord.photo.datasetUrl} target="_blank" rel="noreferrer">画像オープンデータ</a>:<small>公式写真は準備中です</small>}</div></div><button className="primary panda-found-button" disabled={!reached||foundRedPandas.includes(selectedPandaRecord.name)} onClick={markPandaFound}>{foundRedPandas.includes(selectedPandaRecord.name)?'✓ 見つけた！':'この子を見つけた！'}</button></div>}{foundRedPandas.length>0&&<div className="panda-next-choice"><p><b>レッサーパンダ観察QUEST（クエスト）</b>を達成できます。どうする？</p><button className="primary" onClick={finishQuest}>次のクエストへ進む <span>›</span></button><button className="secondary" onClick={()=>setFoundPanda('')}>もう少しレッサーパンダを探す</button><small>ポイントはクエスト終了時に100 POINTを1回付与します。</small></div>}</div>:<><div className="quest-art">{activeQuestImage&&<img className="quest-scene-image" src={activeQuestImage} alt={`${active.type}クエストの案内イラスト`}/>}</div><div className="quest-meta"><p className="source-badge">{active.type} QUEST（クエスト） · 提供：福井県鯖江市</p><strong className="quest-spot">SPOT（地点）：{active.name}</strong><p className="lead">{questInstruction(active.type)}</p><div className="quest-reward"><span>目標：現地で体験する</span><b>100 POINT</b></div></div></>}
